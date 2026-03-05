@@ -1,0 +1,143 @@
+{
+  "common": {
+    "appName": "NestMoney",
+    "loading": "Loading...",
+    "error": "Something went wrong",
+    "retry": "Try again",
+    "save": "Save",
+    "cancel": "Cancel",
+    "done": "Done",
+    "next": "Next",
+    "back": "Back",
+    "confirm": "Confirm",
+    "delete": "Delete",
+    "edit": "Edit",
+    "close": "Close",
+    "yes": "Yes",
+    "no": "No",
+    "amount": "Amount",
+    "date": "Date",
+    "status": "Status",
+    "currency": "USD",
+    "disclaimer": "For educational purposes only, not financial advice."
+  },
+  "auth": {
+    "welcome": "Welcome to NestMoney",
+    "tagline": "Your family's financial brain",
+    "login": "Log In",
+    "signup": "Sign Up",
+    "signOut": "Sign Out",
+    "continueWithPhone": "Continue with Phone",
+    "continueWithEmail": "Continue with Email",
+    "phoneNumber": "Phone number",
+    "emailAddress": "Email address",
+    "password": "Password",
+    "verificationCode": "Verification code",
+    "sendCode": "Send code",
+    "verifyCode": "Verify code",
+    "codeSent": "Code sent to {{phone}}",
+    "chooseLanguage": "Choose Your Language",
+    "languageSubtitle": "You can change this later in settings",
+    "errors": {
+      "invalidPhone": "Please enter a valid phone number",
+      "invalidCode": "Invalid verification code",
+      "invalidCredentials": "Incorrect email or password",
+      "networkError": "Network error — please try again"
+    }
+  },
+  "onboarding": {
+    "step1Title": "Pick your language",
+    "step2Title": "Set up your family",
+    "step3Title": "Invite family members",
+    "familyName": "Family name",
+    "yourRole": "Your role",
+    "inviteViaWhatsApp": "Invite via WhatsApp",
+    "inviteViaSMS": "Invite via SMS",
+    "skipForNow": "Skip for now",
+    "roles": {
+      "primary_parent": "Primary Parent",
+      "secondary_parent": "Co-Parent",
+      "child": "Child",
+      "contributor": "Contributor (Grandparent / Family Abroad)"
+    }
+  },
+  "dashboard": {
+    "title": "Home",
+    "greeting": "Good morning, {{name}}",
+    "balance": "Total Balance",
+    "recentActivity": "Recent Activity",
+    "familyOverview": "Family Overview",
+    "noActivity": "No recent activity",
+    "viewAll": "View all"
+  },
+  "cards": {
+    "title": "Cards",
+    "kidCards": "Kid Cards",
+    "noCards": "No cards yet",
+    "noCardsDescription": "Virtual kid cards will appear here once created",
+    "createCard": "Create Kid Card",
+    "cardDetails": "Card Details",
+    "freeze": "Freeze Card",
+    "unfreeze": "Unfreeze Card",
+    "frozen": "Frozen",
+    "active": "Active",
+    "cancelled": "Cancelled",
+    "dailyLimit": "Daily Limit",
+    "spendingLimit": "Spending Limit",
+    "categoryLimits": "Category Limits",
+    "approveSpend": "Approve Spend",
+    "denySpend": "Deny",
+    "pendingApprovals": "Pending Approvals",
+    "transactionHistory": "Transaction History",
+    "controls": "Controls"
+  },
+  "goals": {
+    "title": "Savings Goals",
+    "noGoals": "No savings goals yet",
+    "noGoalsDescription": "Create a goal to start saving together as a family",
+    "createGoal": "Create Goal",
+    "goalTitle": "Goal name",
+    "targetAmount": "Target amount",
+    "deadline": "Deadline (optional)",
+    "visibleToContributors": "Visible to grandparents / contributors",
+    "contribute": "Contribute",
+    "progress": "{{percent}}% saved",
+    "completed": "Goal reached!",
+    "remaining": "{{amount}} to go",
+    "contributors": "Contributors"
+  },
+  "learn": {
+    "title": "Learn",
+    "noVideos": "No lessons yet",
+    "noVideosDescription": "Financial education videos will appear here based on your account activity",
+    "newLesson": "New lesson ready for you",
+    "watchNow": "Watch Now",
+    "education": "Financial Education",
+    "topics": {
+      "first_paycheck": "Understanding your pay stub",
+      "card_declined": "Why cards get declined",
+      "credit_score_change": "What affects your credit score",
+      "first_savings_goal": "How savings goals work",
+      "overdraft_fee": "Overdraft fees and how to avoid them",
+      "tax_season": "Filing taxes basics"
+    }
+  },
+  "modals": {
+    "explain": {
+      "title": "What is this?",
+      "loading": "Getting explanation...",
+      "tapToExplain": "Tap to explain"
+    },
+    "approve": {
+      "title": "Approve Purchase?",
+      "description": "{{name}} wants to spend {{amount}} at {{merchant}}",
+      "approve": "Approve",
+      "deny": "Deny"
+    },
+    "contribute": {
+      "title": "Contribute to Goal",
+      "description": "Add money to {{goalTitle}}",
+      "amountLabel": "How much would you like to contribute?"
+    }
+  }
+}
