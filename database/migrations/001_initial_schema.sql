@@ -1,6 +1,7 @@
 -- ============================================================
 -- NestMoney — Initial Database Schema
--- Provider: AWS Aurora Serverless v2 (PostgreSQL)
+-- Provider: AWS RDS Postgres, db.t3.micro (free tier)
+-- Engine: PostgreSQL 15
 -- Run: psql -h $DB_HOST -U $DB_USER -d $DB_NAME -f 001_initial_schema.sql
 -- ============================================================
 

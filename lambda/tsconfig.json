@@ -7,12 +7,16 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "outDir": "dist",
-    "rootDir": ".",
     "baseUrl": ".",
     "paths": {
-      "../types/*": ["../types/*"]
+      "../types/*": ["../types/*"],
+      "../lib/*": ["../lib/*"]
     }
   },
-  "include": ["**/*.ts"],
+  "include": [
+    "**/*.ts",
+    "../types/**/*.ts",
+    "../lib/db.ts"
+  ],
   "exclude": ["node_modules", "dist"]
 }

@@ -1,15 +1,21 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: NestMoney — Lambda Functions + API Gateway (REST + WebSocket)
+Description: >
+  NestMoney — Lambda Functions + API Gateway (REST + WebSocket)
+  Configured for AWS free tier:
+    - 128 MB memory default (free tier: 400,000 GB-seconds/month)
+    - 3 second timeout default (override per-function for AI/video calls)
+    - RDS db.t3.micro Postgres backend
 
 # ============================================================
 # Globals — applied to all Lambda functions
+# Free-tier tuning: 128 MB, 3s. AI/video functions override Timeout.
 # ============================================================
 Globals:
   Function:
     Runtime: nodejs20.x
-    MemorySize: 256
-    Timeout: 30
+    MemorySize: 128   # Free tier: 400,000 GB-seconds/month at 128MB = 3.2M invocations
+    Timeout: 3        # Default: fast CRUD. AI/video functions override this.
     Environment:
       Variables:
         AWS_ACCOUNT_ID: !Ref AWS::AccountId
@@ -29,7 +35,7 @@ Globals:
 Parameters:
   DbHost:
     Type: String
-    Description: Aurora Serverless v2 cluster endpoint
+    Description: RDS db.t3.micro endpoint (from infrastructure/rds.yaml Output DBEndpoint)
   DbPort:
     Type: String
     Default: '5432'
@@ -297,14 +303,21 @@ Resources:
       FunctionName: nestmoney-process-transaction
       CodeUri: processors/process-transaction/
       Handler: index.handler
+      Timeout: 10  # SQS processor — needs more than 3s for DB writes + WebSocket push
       Policies:
-        - AmazonDynamoDBFullAccess  # Replace with scoped policy
+        - SQSPollerPolicy:
+            QueueName: !GetAtt TransactionQueue.QueueName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - execute-api:ManageConnections
+              Resource: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*'
       Events:
         SqsTrigger:
           Type: SQS
           Properties:
             Queue: !GetAtt TransactionQueue.Arn
-            BatchSize: 10
+            BatchSize: 5  # Lower than default — each record hits RDS; stay within free-tier connections
 
   # ============================================================
   # AI Functions
@@ -315,7 +328,8 @@ Resources:
       FunctionName: nestmoney-ai-explain
       CodeUri: ai/explain/
       Handler: index.handler
-      Timeout: 30
+      MemorySize: 256  # Anthropic streaming benefits from more memory
+      Timeout: 15      # Anthropic API p99 < 10s for short completions; 15s is safe
       Events:
         Api:
           Type: Api
@@ -330,7 +344,8 @@ Resources:
       FunctionName: nestmoney-ai-health-score
       CodeUri: ai/health-score/
       Handler: index.handler
-      Timeout: 30
+      MemorySize: 256
+      Timeout: 15
       Events:
         Api:
           Type: Api
@@ -340,7 +355,8 @@ Resources:
             Method: GET
 
   # ============================================================
-  # Video Function
+  # Video Function — async, no API Gateway trigger
+  # Invoked async from process-transaction; timeout set high for HeyGen polling
   # ============================================================
   TriggerVideoFunction:
     Type: AWS::Serverless::Function
@@ -348,7 +364,8 @@ Resources:
       FunctionName: nestmoney-trigger-video
       CodeUri: videos/trigger-video/
       Handler: index.handler
-      Timeout: 60
+      MemorySize: 256
+      Timeout: 60  # HeyGen async generation can take 30–45s
 
 # ============================================================
 # Outputs

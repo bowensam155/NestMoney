@@ -1,7 +1,16 @@
 // ============================================================
-// NestMoney — Aurora PostgreSQL Client
-// Shared across all Lambda functions via the Lambda Layer.
-// Connection is reused across warm invocations.
+// NestMoney — RDS Postgres Client (Lambda Layer)
+// Provider: AWS RDS db.t3.micro (free tier)
+//
+// This file is bundled into the Lambda Layer and shared across
+// all Lambda functions. Connection pool is reused across warm
+// invocations (module-level singleton per Lambda instance).
+//
+// Free-tier connection math:
+//   db.t3.micro max_connections ≈ 60–80
+//   Lambda concurrency limit (dev): set reserved concurrency to 10
+//   max: 1 per instance × 10 instances = 10 connections max
+//   Leaves headroom for RDS internal processes and future growth.
 // ============================================================
 
 import { Pool, PoolClient } from 'pg';
@@ -17,9 +26,18 @@ function getPool(): Pool {
     database: process.env.DB_NAME,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
-    max: 1,             // Lambda: 1 connection per function instance
-    idleTimeoutMillis: 120000,
-    connectionTimeoutMillis: 5000,
+
+    // 1 connection per Lambda instance — Lambda instances are single-threaded.
+    // Aggregate pool across concurrent instances stays well under RDS free-tier limit.
+    max: 1,
+
+    // Release idle connections promptly — Lambda instances can sit warm for minutes
+    idleTimeoutMillis: 30_000,
+
+    // Fail fast if RDS is unreachable (misconfigured VPC, wrong SG, etc.)
+    connectionTimeoutMillis: 3_000,
+
+    // SSL required for RDS in AWS; disabled for local Docker Postgres
     ssl: process.env.DB_HOST?.includes('rds.amazonaws.com')
       ? { rejectUnauthorized: true }
       : false,

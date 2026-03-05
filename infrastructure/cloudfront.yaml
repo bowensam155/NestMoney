@@ -1,0 +1,158 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  NestMoney — CloudFront Distribution + S3 Bucket
+  Serves education videos globally at low latency.
+  Videos cached indefinitely by (trigger_event, language_code).
+  S3 is private — only CloudFront can read it via OAC.
+
+# ============================================================
+# Parameters
+# ============================================================
+Parameters:
+
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+
+# ============================================================
+# Resources
+# ============================================================
+Resources:
+
+  # ----------------------------------------------------------
+  # S3 Bucket — private, CloudFront-only access
+  # Layout: videos/{trigger_event}/{language_code}/video.mp4
+  # ----------------------------------------------------------
+  VideosBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'nestmoney-videos-${Environment}-${AWS::AccountId}'
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Suspended           # No versioning — videos are immutable once created
+      LifecycleConfiguration:
+        Rules:
+          - Id: AbortIncompleteMultipartUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET]
+            AllowedOrigins: ['*']   # CloudFront serves; S3 CORS is a fallback
+            MaxAge: 3600
+      Tags:
+        - Key: Project
+          Value: NestMoney
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ----------------------------------------------------------
+  # OAC — Origin Access Control (replaces legacy OAI)
+  # Only CloudFront can GET from S3
+  # ----------------------------------------------------------
+  VideosOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub 'nestmoney-videos-oac-${Environment}'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # ----------------------------------------------------------
+  # S3 Bucket Policy — allow CloudFront OAC only
+  # ----------------------------------------------------------
+  VideosBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref VideosBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontOAC
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub '${VideosBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                'AWS:SourceArn': !Sub >
+                  arn:aws:cloudfront::${AWS::AccountId}:distribution/${VideosDistribution}
+
+  # ----------------------------------------------------------
+  # CloudFront Distribution
+  # - Price Class 100: US, Canada, Europe only (lowest cost)
+  # - Upgrade to PriceClass_All when user base is global
+  # ----------------------------------------------------------
+  VideosDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub 'NestMoney education videos — ${Environment}'
+        PriceClass: PriceClass_100    # US/Canada/Europe — cheapest tier
+        HttpVersion: http2
+        IPV6Enabled: true
+        DefaultCacheBehavior:
+          TargetOriginId: S3VideoOrigin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          # Cache videos indefinitely — they're immutable once generated
+          CachePolicyId: '658327ea-f89d-4fab-a63d-7e88639e58f6' # CachingOptimized managed policy
+          OriginRequestPolicyId: '88a5eaf4-2fd4-4709-b370-b4c650ea3fcf' # CORS-S3Origin managed policy
+        Origins:
+          - Id: S3VideoOrigin
+            DomainName: !GetAtt VideosBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: ''   # Required field — empty string when using OAC
+            OriginAccessControlId: !GetAtt VideosOAC.Id
+        # No custom error pages for videos — 404 means video not generated yet
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true  # Use *.cloudfront.net domain for now
+      Tags:
+        - Key: Project
+          Value: NestMoney
+        - Key: Environment
+          Value: !Ref Environment
+
+# ============================================================
+# Outputs — reference cloudfront_url in education_videos table
+# ============================================================
+Outputs:
+
+  VideosBucketName:
+    Description: S3 bucket name for education videos
+    Value: !Ref VideosBucket
+    Export:
+      Name: !Sub 'NestMoney-${Environment}-VideosBucket'
+
+  VideosBucketArn:
+    Description: S3 bucket ARN — grant PutObject to trigger-video Lambda
+    Value: !GetAtt VideosBucket.Arn
+    Export:
+      Name: !Sub 'NestMoney-${Environment}-VideosBucketArn'
+
+  CloudFrontDomain:
+    Description: >
+      CloudFront domain — prefix video S3 keys with this to build cloudfront_url.
+      Format: https://{domain}/videos/{event}/{language}/video.mp4
+    Value: !Sub 'https://${VideosDistribution.DomainName}'
+    Export:
+      Name: !Sub 'NestMoney-${Environment}-CloudFrontDomain'
+
+  CloudFrontDistributionId:
+    Description: CloudFront distribution ID — needed for cache invalidations
+    Value: !Ref VideosDistribution
+    Export:
+      Name: !Sub 'NestMoney-${Environment}-CloudFrontDistributionId'

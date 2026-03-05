@@ -1,0 +1,172 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  NestMoney — AWS Cognito User Pool
+  Auth methods: Phone + OTP (primary), Email + password (secondary).
+  No social login.
+
+# ============================================================
+# Parameters
+# ============================================================
+Parameters:
+
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+
+  SESFromEmail:
+    Type: String
+    Description: >
+      Verified SES email address used for Cognito email verification.
+      Must be verified in SES before deploying.
+    Default: noreply@nestmoney.app
+
+# ============================================================
+# Resources
+# ============================================================
+Resources:
+
+  # ----------------------------------------------------------
+  # User Pool
+  # Phone OTP is primary — alias on phone_number and email both.
+  # MFA not required at pool level (OTP at sign-in is the flow).
+  # ----------------------------------------------------------
+  NestMoneyUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub 'nestmoney-${Environment}'
+      UsernameAttributes:
+        - phone_number
+        - email
+      AutoVerifiedAttributes:
+        - phone_number
+        - email
+
+      # Password policy — secondary auth (email/password)
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          TemporaryPasswordValidityDays: 7
+
+      # User schema — store language preference in custom attribute
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+        - Name: phone_number
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+        - Name: language_code
+          AttributeDataType: String
+          Mutable: true
+          DeveloperOnlyAttribute: false
+          StringAttributeConstraints:
+            MinLength: '2'
+            MaxLength: '5'
+
+      # SMS configuration for phone OTP
+      # SmsAuthenticationMessage and SmsVerificationMessage use {####} for the code
+      SmsAuthenticationMessage: 'Your NestMoney code is {####}'
+      SmsVerificationMessage: 'Your NestMoney verification code is {####}'
+
+      # Email configuration via SES
+      EmailConfiguration:
+        EmailSendingAccount: DEVELOPER
+        From: !Ref SESFromEmail
+        SourceArn: !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${SESFromEmail}'
+
+      EmailVerificationMessage: 'Your NestMoney verification code is {####}'
+      EmailVerificationSubject: 'Verify your NestMoney account'
+
+      # Account recovery — phone primary, email secondary
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_phone_number
+            Priority: 1
+          - Name: verified_email
+            Priority: 2
+
+      # Prevent users from deleting their own accounts via the client
+      DeletionProtection: ACTIVE
+
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: false
+
+      UserPoolTags:
+        Project: NestMoney
+        Environment: !Ref Environment
+
+  # ----------------------------------------------------------
+  # App Client — used by the Expo mobile app
+  # No client secret (can't keep secrets in mobile apps)
+  # ----------------------------------------------------------
+  NestMoneyAppClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub 'nestmoney-mobile-${Environment}'
+      UserPoolId: !Ref NestMoneyUserPool
+      GenerateSecret: false          # Mobile app — no client secret
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH   # Email + password
+        - ALLOW_CUSTOM_AUTH          # Phone OTP (custom auth challenge)
+        - ALLOW_REFRESH_TOKEN_AUTH   # Token refresh
+        - ALLOW_USER_SRP_AUTH        # Secure Remote Password (email flow)
+      AccessTokenValidity: 1         # Hours
+      IdTokenValidity: 1             # Hours
+      RefreshTokenValidity: 30       # Days
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+      PreventUserExistenceErrors: ENABLED
+      EnableTokenRevocation: true
+      ReadAttributes:
+        - email
+        - phone_number
+        - custom:language_code
+      WriteAttributes:
+        - email
+        - phone_number
+        - custom:language_code
+
+  # ----------------------------------------------------------
+  # Lambda Trigger — Pre-Sign-Up
+  # Auto-confirm users (skip email verification for OTP flow)
+  # ----------------------------------------------------------
+  # Uncomment and add Lambda ARN when implementing custom auth:
+  # LambdaTriggerPermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:nestmoney-pre-signup'
+  #     Action: lambda:InvokeFunction
+  #     Principal: cognito-idp.amazonaws.com
+  #     SourceArn: !GetAtt NestMoneyUserPool.Arn
+
+# ============================================================
+# Outputs — reference these in lambda/template.yaml and .env.example
+# ============================================================
+Outputs:
+
+  UserPoolId:
+    Description: Cognito User Pool ID — use as EXPO_PUBLIC_COGNITO_USER_POOL_ID
+    Value: !Ref NestMoneyUserPool
+    Export:
+      Name: !Sub 'NestMoney-${Environment}-UserPoolId'
+
+  UserPoolArn:
+    Description: Cognito User Pool ARN — used by API Gateway authorizer in lambda/template.yaml
+    Value: !GetAtt NestMoneyUserPool.Arn
+    Export:
+      Name: !Sub 'NestMoney-${Environment}-UserPoolArn'
+
+  AppClientId:
+    Description: Cognito App Client ID — use as EXPO_PUBLIC_COGNITO_CLIENT_ID
+    Value: !Ref NestMoneyAppClient
+    Export:
+      Name: !Sub 'NestMoney-${Environment}-AppClientId'

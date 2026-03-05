@@ -1,0 +1,161 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  NestMoney — RDS Postgres (Free Tier)
+  Instance: db.t3.micro | 20 GB gp2 | Single AZ | No Multi-AZ
+  Free tier covers 750 hrs/month of db.t3.micro for 12 months.
+  Switch to db.t3.small + Multi-AZ when ready for production.
+
+# ============================================================
+# Parameters
+# ============================================================
+Parameters:
+
+  DBName:
+    Type: String
+    Default: nestmoney
+    Description: Postgres database name
+
+  DBUsername:
+    Type: String
+    Default: nestmoney_app
+    Description: Master username for the RDS instance
+    NoEcho: false
+
+  DBPassword:
+    Type: String
+    Description: Master password — store in Secrets Manager before deploying
+    NoEcho: true
+    MinLength: 16
+    ConstraintDescription: Must be at least 16 characters
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC in which to place the RDS instance
+
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: >
+      Two or more private subnets for the DB subnet group.
+      Lambda functions must be in the same VPC to connect.
+
+  LambdaSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: >
+      Security group attached to Lambda functions.
+      RDS will allow inbound 5432 from this SG only.
+
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Deployment environment tag
+
+# ============================================================
+# Resources
+# ============================================================
+Resources:
+
+  # ----------------------------------------------------------
+  # Security Group — RDS only accepts connections from Lambda SG
+  # ----------------------------------------------------------
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: NestMoney RDS Postgres — allow Lambda inbound only
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref LambdaSecurityGroupId
+      Tags:
+        - Key: Name
+          Value: !Sub 'nestmoney-rds-sg-${Environment}'
+        - Key: Project
+          Value: NestMoney
+
+  # ----------------------------------------------------------
+  # DB Subnet Group — requires subnets in at least 2 AZs
+  # (AWS requirement even for single-AZ instances)
+  # ----------------------------------------------------------
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: NestMoney RDS subnet group
+      SubnetIds: !Ref SubnetIds
+      Tags:
+        - Key: Project
+          Value: NestMoney
+
+  # ----------------------------------------------------------
+  # RDS Instance — db.t3.micro, free tier
+  #
+  # Free tier specifics:
+  #   - db.t3.micro only (not db.t2.micro which is being retired)
+  #   - 20 GB gp2 storage
+  #   - Single AZ (MultiAZ: false)
+  #   - No automated backups beyond 0 days adds cost; 1 day is fine
+  #   - DeletionProtection: false for dev; set true before prod
+  # ----------------------------------------------------------
+  NestMoneyDB:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    Properties:
+      DBInstanceIdentifier: !Sub 'nestmoney-${Environment}'
+      DBName: !Ref DBName
+      DBInstanceClass: db.t3.micro          # Free tier eligible
+      Engine: postgres
+      EngineVersion: '15.4'                 # Latest Postgres 15 on RDS
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+      AllocatedStorage: '20'               # GB — free tier max is 20 GB
+      StorageType: gp2                     # General Purpose SSD — free tier
+      StorageEncrypted: true               # Encrypt at rest — no extra cost
+      MultiAZ: false                       # Single AZ — free tier only
+      PubliclyAccessible: false            # Private — Lambda connects via VPC
+      BackupRetentionPeriod: 1             # 1 day automated backup — minimal cost
+      PreferredBackupWindow: '03:00-04:00' # UTC — off-peak for US West
+      PreferredMaintenanceWindow: 'sun:04:00-sun:05:00'
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - !GetAtt RDSSecurityGroup.GroupId
+      EnableCloudwatchLogsExports:
+        - postgresql                        # Log slow queries and errors
+      AutoMinorVersionUpgrade: true
+      DeletionProtection: false             # Set true before going to prod
+      Tags:
+        - Key: Project
+          Value: NestMoney
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: FreeTier
+          Value: 'true'
+
+# ============================================================
+# Outputs — reference these in lambda/template.yaml Parameters
+# ============================================================
+Outputs:
+
+  DBEndpoint:
+    Description: RDS instance endpoint — use as DB_HOST in Lambda env vars
+    Value: !GetAtt NestMoneyDB.Endpoint.Address
+    Export:
+      Name: !Sub 'NestMoney-${Environment}-DBEndpoint'
+
+  DBPort:
+    Description: RDS port (always 5432 for Postgres)
+    Value: !GetAtt NestMoneyDB.Endpoint.Port
+    Export:
+      Name: !Sub 'NestMoney-${Environment}-DBPort'
+
+  DBName:
+    Description: Database name
+    Value: !Ref DBName
+    Export:
+      Name: !Sub 'NestMoney-${Environment}-DBName'
+
+  RDSSecurityGroupId:
+    Description: Security group ID for the RDS instance
+    Value: !GetAtt RDSSecurityGroup.GroupId
+    Export:
+      Name: !Sub 'NestMoney-${Environment}-RDSSecurityGroupId'
